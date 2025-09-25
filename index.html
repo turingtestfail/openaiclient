@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>OpenLayers 10 + GeoServer WPS Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="https://esm.sh/ol@10.0.0/ol.css">
+  <style>
+    :root {
+      --sidebar-width: 360px;
+      --accent: #0066cc;
+      font-family: system-ui, sans-serif;
+    }
+    html, body {
+      margin: 0;
+      height: 100%;
+      width: 100%;
+    }
+    #app {
+      display: grid;
+      grid-template-columns: var(--sidebar-width) 1fr;
+      width: 100%;
+      height: 100%;
+    }
+    #sidebar {
+      padding: 12px;
+      background: #fff;
+      border-right: 1px solid #ddd;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #chatLog {
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .msg {
+      max-width: 100%;
+      padding: 8px 10px;
+      border-radius: 10px;
+      line-height: 1.35;
+    }
+    .msg.user { background: #dbeeff; align-self: flex-end; }
+    .msg.bot { background: #f8fafc; align-self: flex-start; }
+    #composer {
+      display: flex;
+      gap: 8px;
+    }
+    #input {
+      flex: 1;
+      min-height: 44px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 8px;
+    }
+    #sendBtn, #newSessionBtn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 0 14px;
+      cursor: pointer;
+    }
+    #map { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div id="chatLog"></div>
+      <div id="composer">
+        <textarea id="input" rows="2" placeholder="Type a question…"></textarea>
+        <button id="sendBtn">Send</button>
+        <button id="newSessionBtn">New Session</button>
+      </div>
+    </aside>
+    <main><div id="map"></div></main>
+  </div>
+
+  <script type="module">
+    import Map from "https://esm.sh/ol@10.0.0/Map.js";
+    import View from "https://esm.sh/ol@10.0.0/View.js";
+    import TileLayer from "https://esm.sh/ol@10.0.0/layer/Tile.js";
+    import VectorLayer from "https://esm.sh/ol@10.0.0/layer/Vector.js";
+    import OSM from "https://esm.sh/ol@10.0.0/source/OSM.js";
+    import VectorSource from "https://esm.sh/ol@10.0.0/source/Vector.js";
+    import GeoJSON from "https://esm.sh/ol@10.0.0/format/GeoJSON.js";
+    import { Stroke, Fill, Circle as CircleStyle, Style } from "https://esm.sh/ol@10.0.0/style.js";
+    import { fromLonLat } from "https://esm.sh/ol@10.0.0/proj.js";
+
+    // --- Config ---
+    const WPS_URL = "http://localhost:8080/geoserver/ows?strict=true"; // CHANGE THIS
+
+    // --- Session state ---
+    let sessionId = "";
+
+    // --- Map setup ---
+    const vectorSource = new VectorSource();
+    const vectorLayer = new VectorLayer({
+      source: vectorSource,
+      style: new Style({
+        stroke: new Stroke({ width: 2, color: "#1f78b4" }),
+        fill: new Fill({ color: "rgba(31,120,180,0.15)" }),
+        image: new CircleStyle({ radius: 6, fill: new Fill({ color: "#1f78b4" }) })
+      })
+    });
+
+    const map = new Map({
+      target: "map",
+      layers: [
+        new TileLayer({ source: new OSM() }),
+        vectorLayer
+      ],
+      view: new View({
+        center: fromLonLat([0, 20]),
+        zoom: 2
+      })
+    });
+
+    // --- Chat UI ---
+    const chatLog = document.getElementById("chatLog");
+    const input = document.getElementById("input");
+    const sendBtn = document.getElementById("sendBtn");
+    const newSessionBtn = document.getElementById("newSessionBtn");
+
+    function appendMessage(text, who = "bot") {
+      const div = document.createElement("div");
+      div.className = "msg " + who;
+      div.textContent = text;
+      chatLog.appendChild(div);
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+
+    async function postChat(question) {
+      appendMessage(question, "user");
+
+      // --- Build XML request ---
+      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<wps:Execute version="1.0.0" service="WPS"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:wps="http://www.opengis.net/wps/1.0.0"
+  xmlns:ows="http://www.opengis.net/ows/1.1"
+  xsi:schemaLocation="http://www.opengis.net/wps/1.0.0
+  http://schemas.opengis.net/wps/1.0.0/wpsAll.xsd">
+
+  <ows:Identifier>gs:OpenAI</ows:Identifier>
+  <wps:DataInputs>
+    <wps:Input>
+      <ows:Identifier>question</ows:Identifier>
+      <wps:Data>
+        <wps:LiteralData>${question}</wps:LiteralData>
+      </wps:Data>
+    </wps:Input>
+    <wps:Input>
+      <ows:Identifier>session_id</ows:Identifier>
+      <wps:Data>
+        <wps:LiteralData>${sessionId}</wps:LiteralData>
+      </wps:Data>
+    </wps:Input>
+    <wps:Input>
+      <ows:Identifier>return_data</ows:Identifier>
+      <wps:Data>
+        <wps:LiteralData>true</wps:LiteralData>
+      </wps:Data>
+    </wps:Input>
+  </wps:DataInputs>
+  <wps:ResponseForm>
+    <wps:RawDataOutput>
+      <ows:Identifier>result</ows:Identifier>
+    </wps:RawDataOutput>
+  </wps:ResponseForm>
+</wps:Execute>`;
+
+      try {
+        const resp = await fetch(WPS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/xml" },
+          body: xml
+        });
+
+        const text = await resp.text();
+        const parsed = JSON.parse(text);
+
+        appendMessage("WPS responded.", "bot");
+
+        // --- Save session id if returned ---
+        if (parsed.sessionId) {
+          sessionId = parsed.sessionId;
+          appendMessage("Session ID set: " + sessionId, "bot");
+        }
+
+        if (parsed.geoJSON) {
+          const geojsonObj = JSON.parse(parsed.geoJSON);
+          addGeoJsonToMap(geojsonObj);
+          appendMessage("Rendering GeoJSON on map.", "bot");
+        } else {
+          appendMessage("No GeoJSON found in response.", "bot");
+        }
+      } catch (err) {
+        appendMessage("Error: " + err.message, "bot");
+      }
+    }
+
+    function addGeoJsonToMap(geojsonObj) {
+      try {
+        const fmt = new GeoJSON({ featureProjection: map.getView().getProjection() });
+        const features = fmt.readFeatures(geojsonObj);
+        vectorSource.clear();
+        vectorSource.addFeatures(features);
+        map.getView().fit(vectorSource.getExtent(), { padding: [30, 30, 30, 30], maxZoom: 18 });
+      } catch (e) {
+        appendMessage("Failed to parse GeoJSON: " + e.message, "bot");
+      }
+    }
+
+    // --- Events ---
+    sendBtn.addEventListener("click", () => {
+      const text = input.value.trim();
+      if (!text) return;
+      postChat(text);
+      input.value = "";
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendBtn.click();
+      }
+    });
+
+    newSessionBtn.addEventListener("click", () => {
+      sessionId = "";
+      vectorSource.clear();
+      appendMessage("🔄 New session started. Session ID cleared.", "bot");
+    });
+
+    // Greeting
+    appendMessage("Hello! Ask me something — if GeoServer WPS returns GeoJSON, I'll draw it on the map. Use 'New Session' to reset.");
+  </script>
+</body>
+</html>
