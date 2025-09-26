@@ -190,10 +190,12 @@
         // --- Save session id if returned ---
         if (parsed.sessionId) {
           sessionId = parsed.sessionId;
-          appendMessage("Session ID set: " + sessionId, "bot");
         }
-
-        if (parsed.geoJSON) {
+        if(parsed.cqls && parsed.cqls[0]){
+          appendMessage("ECQL Query: "+parsed.cqls[0].ecql,"bot")
+          appendMessage("GeoServer LayerName: "+parsed.cqls[0].layerName)
+        }
+        if (parsed.geoJSON&&parsed.geoJSON!="") {
           const geojsonObj = JSON.parse(parsed.geoJSON);
           addGeoJsonToMap(geojsonObj);
           appendMessage("Rendering GeoJSON on map.", "bot");
