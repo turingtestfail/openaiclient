@@ -66,6 +66,23 @@
       cursor: pointer;
     }
     #map { width: 100%; height: 100%; }
+        #popup {
+      background-color: white;
+      padding: 10px;
+      border: 1px solid #ccc;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      border-radius: 5px;
+      position: absolute;
+      bottom: 15px;
+      left: -50%;
+      white-space: nowrap;
+    }
+    .ol-popup-closer {
+      text-decoration: none;
+      position: absolute;
+      top: 2px;
+      right: 8px;
+    }
   </style>
 </head>
 <body>
@@ -79,6 +96,10 @@
       </div>
     </aside>
     <main><div id="map"></div></main>
+      <div id="popup" class="ol-popup">
+    <a href="#" id="popup-closer" class="ol-popup-closer">✖</a>
+    <div id="popup-content"></div>
+  </div>
   </div>
 
   <script type="module">
@@ -89,6 +110,7 @@
     import OSM from "https://esm.sh/ol@10.0.0/source/OSM.js";
     import VectorSource from "https://esm.sh/ol@10.0.0/source/Vector.js";
     import GeoJSON from "https://esm.sh/ol@10.0.0/format/GeoJSON.js";
+    import Overlay from 'https://esm.sh/ol@10.0.0/Overlay.js';
     import { Stroke, Fill, Circle as CircleStyle, Style } from "https://esm.sh/ol@10.0.0/style.js";
     import { fromLonLat } from "https://esm.sh/ol@10.0.0/proj.js";
 
@@ -119,6 +141,59 @@
         center: fromLonLat([0, 20]),
         zoom: 2
       })
+    });
+
+    const popupContainer = document.getElementById('popup');
+const popupContent = document.getElementById('popup-content');
+const popupCloser = document.getElementById('popup-closer');
+
+    const overlay = new Overlay({
+  element: popupContainer,
+  autoPan: {
+    animation: {
+      duration: 250,
+    },
+  },
+});
+map.addOverlay(overlay);
+
+// Handle closing the popup
+popupCloser.onclick = function() {
+  overlay.setPosition(undefined);
+  popupCloser.blur();
+  return false;
+};
+
+        map.on('click', function (evt) {
+        const coordinate = evt.coordinate;
+        let clickedFeature = null;
+
+        map.forEachFeatureAtPixel(evt.pixel, function (feature, layer) {
+            if (layer === vectorLayer) { 
+                clickedFeature = feature;
+                return true; // Stop iterating after finding the first feature in our layer
+            }
+        });
+
+        // Now 'clickedFeature' will hold the feature that was clicked (if any)
+        if (clickedFeature) {
+            // Access and display attributes
+            const properties = clickedFeature.getProperties();
+            console.log('Clicked Feature Properties:', properties);
+
+            // Example: Displaying attributes in a popup overlay
+            const content = document.getElementById('popup-content');
+            content.innerHTML = ''; // Clear previous content
+            for (const key in properties) {
+                if (properties.hasOwnProperty(key) && key !== 'geometry') { // Exclude geometry
+                    content.innerHTML += `<b>${key}:</b> ${properties[key]}<br>`;
+                }
+            }
+            overlay.setPosition(coordinate); // Position your popup overlay
+        } else {
+            // No feature clicked, hide popup or perform other actions
+            overlay.setPosition(undefined);
+        }
     });
 
     // --- Chat UI ---
