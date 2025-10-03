@@ -110,13 +110,15 @@
     import OSM from "https://esm.sh/ol@10.0.0/source/OSM.js";
     import VectorSource from "https://esm.sh/ol@10.0.0/source/Vector.js";
     import GeoJSON from "https://esm.sh/ol@10.0.0/format/GeoJSON.js";
+    import WMSCapabilities from "https://esm.sh/ol@10.0.0/format/WMSCapabilities.js";
     import Overlay from 'https://esm.sh/ol@10.0.0/Overlay.js';
     import { Stroke, Fill, Circle as CircleStyle, Style } from "https://esm.sh/ol@10.0.0/style.js";
     import { fromLonLat } from "https://esm.sh/ol@10.0.0/proj.js";
 
     // --- Config ---
     const WPS_URL = "http://localhost:8080/geoserver/ows?strict=true"; // CHANGE THIS
-
+    const WMS_CAPABILITIES = "http://localhost:8080/geoserver/ows?service=WMS&request=GetCapabilities";
+    const WFS_GETFEATUREINFO = "http://localhost:8080/geoserver/ows?service=WFS&version=1.1.0&request=DescribeFeatureType&typeName="
     // --- Session state ---
     let sessionId = "";
 
@@ -251,6 +253,9 @@ popupCloser.onclick = function() {
 </wps:Execute>`;
 
       try {
+        getLayers().then(layers=>console.log(layers));
+        getLayerSchema("topp:states").then(attrs => console.log(attrs));
+
         const resp = await fetch(WPS_URL, {
           method: "POST",
           headers: { "Content-Type": "text/xml" },
@@ -293,6 +298,37 @@ popupCloser.onclick = function() {
         appendMessage("Failed to parse GeoJSON: " + e.message, "bot");
       }
     }
+
+    function getLayers(){
+        return fetch(WMS_CAPABILITIES)
+          .then(res => res.text())
+          .then(text => {
+          const parser = new WMSCapabilities();
+          const result = parser.read(text);
+          return result.Capability.Layer.Layer; // list of layers
+        });
+    }
+
+    function getLayerSchema(typeName) {
+        const url = WFS_GETFEATUREINFO+typeName;
+
+        return fetch(url)
+          .then(res => res.text())
+          .then(text => {
+            const xml = new DOMParser().parseFromString(text, 'text/xml');
+            const elements = xml.getElementsByTagName("xsd:element");
+
+            const attributes = [];
+            for (let i = 0; i < elements.length; i++) {
+              const el = elements[i];
+              attributes.push({
+                name: el.getAttribute("name"),
+                type: el.getAttribute("type")
+              });
+            }
+            return attributes;
+      });
+}
 
     // --- Events ---
     sendBtn.addEventListener("click", () => {
