@@ -83,6 +83,19 @@
       top: 2px;
       right: 8px;
     }
+    .layer-attributes {
+      background: #f5f8fb;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 0.9em;
+      margin-top: 4px;
+    }
+    .layer-link:hover {
+      text-decoration: none;
+      color: #004a99;
+    }
+
+
   </style>
 </head>
 <body>
@@ -271,10 +284,58 @@ popupCloser.onclick = function() {
         if (parsed.sessionId) {
           sessionId = parsed.sessionId;
         }
-        if(parsed.cqls && parsed.cqls[0]){
-          appendMessage("ECQL Query: "+parsed.cqls[0].ecql,"bot")
-          appendMessage("GeoServer LayerName: "+parsed.cqls[0].layerName)
-        }
+        if (parsed.cqls && parsed.cqls[0]) {
+          appendMessage("ECQL Query: " + parsed.cqls[0].ecql, "bot");
+
+          const layerName = parsed.cqls[0].layerName;
+          const div = document.createElement("div");
+          div.className = "msg bot";
+          div.innerHTML = `
+            GeoServer Layer:
+            <a href="#" class="layer-link" data-layer="${layerName}" style="color: var(--accent); text-decoration: underline;">
+              ${layerName}
+            </a>
+            <div class="layer-attributes" style="margin-top:6px; display:none;"></div>
+          `;
+          chatLog.appendChild(div);
+          chatLog.scrollTop = chatLog.scrollHeight;
+
+          const link = div.querySelector(".layer-link");
+          const attrContainer = div.querySelector(".layer-attributes");
+          let loaded = false; // Track if attributes have been loaded yet
+          let open = false;   // Track open/closed state
+
+          link.addEventListener("click", async (e) => {
+            e.preventDefault();
+            open = !open; // Toggle open/close
+
+            if (!open) {
+              attrContainer.style.display = "none";
+              return;
+            }
+
+            attrContainer.style.display = "block";
+
+            if (!loaded) {
+              attrContainer.innerHTML = "Loading attributes…";
+              try {
+                const attrs = await getLayerSchema(layerName);
+                if (attrs.length === 0) {
+                  attrContainer.innerHTML = "<i>No attributes found.</i>";
+                } else {
+                  attrContainer.innerHTML =
+                    `<b>Attributes for ${layerName}:</b><br>` +
+                    attrs.map(a => `• ${a.name} <span style="color:#777">(${a.type})</span>`).join("<br>");
+                }
+                loaded = true;
+              } catch (err) {
+                attrContainer.innerHTML = `<span style="color:red">Failed to load attributes: ${err.message}</span>`;
+              }
+            }
+          });
+}
+
+
         if (parsed.geoJSON&&parsed.geoJSON!="") {
           const geojsonObj = JSON.parse(parsed.geoJSON);
           addGeoJsonToMap(geojsonObj);
